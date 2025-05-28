@@ -1,5 +1,5 @@
 
-const JOURNAL_KEY_REGEX = "(https\:\/\/content.\.milibris\.com\/access\/html5\-reader\/.[^\/]*)\/pages\/jpeg\/ld\/"
+const JOURNAL_KEY_REGEX = "(https\:\/\/content\.milibris\.com\/access\/html5\-reader\/.[^\/]*)\/pages\/jpeg\/ld\/"
 
 class Journal {
 
