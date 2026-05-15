@@ -15,17 +15,17 @@ class Journal {
 
   getJournalKey(all_html) {
 
-    console.log("Journal key: ");
+    console.debug("Journal key: ");
     let reg = new RegExp(JOURNAL_KEY_REGEX);
     if (all_html !== undefined) {
       let result = all_html.match(reg);
       if (result !== null) {
-        console.log(result)
+        console.debug(result)
         this.journal_key = result[1];
         this.key_find = true;
       }
     }
-    console.log(this.getState());
+    console.debug(this.getState());
     return this.getState();
 
   }
