@@ -1,5 +1,11 @@
 const { jsPDF } = window.jspdf;
 
+const config = {
+  addInvisibleText: true,
+  fetchArticle: true,
+  fontSize: 20,
+};
+
 // store information
 const state = {
   generationInProgressing: false,
@@ -138,6 +144,8 @@ async function generatePages(journalKey, material, callbackUpdate) {
   const firstHd = material.pages[0].hd;
   const doc = new jsPDF("p", "px", [firstHd.width, firstHd.height]);
 
+  const rootOutline = handleMetadata(doc, material)
+
   let pageIndex = 1;
   state.maxPage = material.pages.length;
   for (const page of material.pages) {
@@ -178,6 +186,29 @@ async function generatePages(journalKey, material, callbackUpdate) {
       }
     }
 
+    // add outlines and invisible text
+    const pageOutline = doc.outline.add(rootOutline, `Page ${pageIndex}`, { pageNumber: pageIndex });
+    if (material.boxes) {
+      for (const box of material.boxes.filter((box) => box.page === pageIndex && box.type === "article")) {
+        const article = material.articles[box.target]
+        const paragraphs = await getArticleParagraphs(`${journalKey}/${article.url}`);
+        await addInvisibleText(doc, hd, box, article.abstract, paragraphs);
+        const outlineTitleParts = []
+        if (article.rubrics?.length) {
+          outlineTitleParts.push(article.rubrics[0])
+        }
+        if (article.title) {
+          outlineTitleParts.push(article.title)
+        }
+        let title = ""
+        if (article.rubrics?.length) {
+          title = outlineTitleParts.join(" - ")
+          const articleOutline = doc.outline.add(pageOutline, title, { pageNumber: pageIndex });
+          paragraphs.forEach((p) => doc.outline.add(articleOutline, p, { pageNumber: pageIndex }));
+        }
+      }
+    }
+
     pageIndex++;
     if (pageIndex <= material.pages.length) {
       doc.addPage();
@@ -186,6 +217,100 @@ async function generatePages(journalKey, material, callbackUpdate) {
   // save
   doc.save(`${material.metadata.provider}_${material.metadata.publication_date}`);
   reset();
+}
+
+function handleMetadata(doc, material) {
+  // handle pdf properties
+  const titleParts = [];
+  if (material.metadata.title) {
+    titleParts.push(material.metadata.title);
+  }
+  if (material.metadata.issue_number) {
+    titleParts.push(material.metadata.issue_number);
+  }
+  const properties = {};
+  if (titleParts.length) {
+    properties.title = titleParts.join(" - ");
+  }
+  if (material.metadata.provider) {
+    properties.author = material.metadata.provider;
+  }
+  doc.setProperties(properties);
+  if (material.metadata.publication_date) {
+    const publicationDate = new Date(material.metadata.publication_date);
+    doc.setCreationDate(publicationDate);
+  }
+  // create root outline
+  return doc.outline.add(null, properties.title ?? 'Journal', null);
+}
+
+async function getArticleParagraphs(url) {
+  let paragraphs = []
+  if (config.fetchArticle) {
+    try {
+      const response = await fetch(url);
+      const articleContent = await response.json();
+      paragraphs = [
+        cleanTextWithParagraphs(articleContent.title || ""),
+        ...(articleContent?.content?.sections
+          ?.flatMap((section) => section.items || [])
+          .filter((item) => item.type === "text" && item.class === "paragraph")
+          .map((item) => cleanTextWithParagraphs(item.content)) || [])
+      ];
+    } catch (error) {
+      console.warn("Erreur fetch article", url, error);
+    }
+  }
+  return paragraphs;
+}
+
+async function addInvisibleText(doc, hd, box, text, paragraphs) {
+  if (config.addInvisibleText) {
+    let textToInsert = paragraphs.length > 0 ? paragraphs.join("\n\n") : text
+    // console.debug(textToInsert)
+    const x = Math.round(box.left * hd.width);
+    const y = Math.round(box.top * hd.height);
+    const w = Math.round(box.width * hd.width);
+    doc.saveGraphicsState();
+    doc.setGState(doc.GState({ opacity: 0 }));
+    doc.setFontSize(config.fontSize);
+    doc.text(textToInsert, x, y, {
+      align: "left",
+      maxWidth: w,
+      renderingMode: "invisible",
+    });
+    doc.restoreGraphicsState();
+  }
+}
+
+function cleanTextWithParagraphs(html) {
+  if (!html) return "";
+
+  // Replace <br>
+  html = html.replace(/<br\s*\/?>/gi, "\n");
+
+  // Replace html paragraphs
+  html = html.replace(/<\/p>/gi, "\n\n");
+  html = html.replace(/<p[^>]*>/gi, "");
+
+  // Delete others HTML tags
+  let text = html.replace(/<[^>]+>/g, " ");
+
+  // Decode HTML entities
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = text;
+  text = textarea.value;
+
+  // Delete invisibles characters
+  text = text.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  // Normalize spaces
+  text = text.replace(/[ \t]+/g, " ");
+
+  // Normalize new lines
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  return text.trim();
 }
 
 function getDataUri(url) {
