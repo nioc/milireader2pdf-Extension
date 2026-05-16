@@ -182,7 +182,6 @@ async function generatePages(journalKey, material, callbackUpdate) {
         console.debug(`row${row}, col${col}: width${tileWidth}, height:${tileHeight}`);
       }
     }
-    }
 
     pageIndex++;
     if (pageIndex <= material.pages.length) {
