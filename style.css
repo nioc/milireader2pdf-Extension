@@ -52,10 +52,10 @@ body {
   }
 }
 
-.green {
-  color: #1abc9c;
+.success {
+  color: #10a88a;
 }
 
-.red {
+.error {
   color: #e74c3c;
 }

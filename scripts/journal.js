@@ -32,7 +32,7 @@ class Journal {
 
   getMaterialJSON(callback_error, callback_success) {
     if (this.key_find) {
-      var url = this.journal_key + "/material.json";
+      const url = this.journal_key + "/material.json";
       fetch(url).then((result) => {
         if (result.status !== 200) {
           callback_error(result);

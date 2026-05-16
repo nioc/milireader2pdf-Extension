@@ -1,27 +1,33 @@
 const { jsPDF } = window.jspdf;
 
-const actionBtn = document.getElementById("actionBtn");
-const messagesContainer = document.getElementById("messagesContainer");
-
 // store information
 const state = {
   generationInProgressing: false,
   currentPage: 0,
   maxPage: 0,
   cancelled: false,
-  progressInterval: null,
 };
 
 // UI functions
-function setButtonToGenerationMode(isSuccess) {
+const actionBtn = document.getElementById("actionBtn");
+const messagesContainer = document.getElementById("messagesContainer");
+
+function clearMessages() {
+  messagesContainer.innerHTML = "";
+}
+
+function addMessage(text, classname) {
+  const line = document.createElement("p");
+  if (classname) {
+    line.classList.add(classname);
+  }
+  line.textContent = text;
+  messagesContainer.appendChild(line);
+}
+
+function setButtonToGenerationMode() {
   actionBtn.classList.remove("cancel");
   actionBtn.textContent = "Générer le PDF";
-  messagesContainer.innerHTML = "";
-  if (isSuccess) {
-    addMessage("Génération du PDF terminée", "green");
-  } else {
-    addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
-  }
   actionBtn.onclick = startPdfGeneration
 }
 
@@ -33,25 +39,18 @@ function setButtonToCancelMode() {
 
 // bootstrap
 window.onload = () => {
-  if (state.generationInProgressing) {
-    setButtonToCancelMode();
-    addMessage("Un journal est déjà en cours de création", "green");
-    const progressLine = document.createElement("p");
-    progressLine.classList.add("green");
-    messagesContainer.appendChild(progressLine);
-    state.progressInterval = setInterval(function () {
-      progressLine.textContent = `pages en cours de génération (${state.currentPage}/${state.maxPage})`;
-    }, 500);
-    return;
-  }
-  setButtonToGenerationMode(false);
+  setButtonToGenerationMode();
+  clearMessages();
+  addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
 }
 
 // business logic functions
 function cancelPdfGeneration() {
   reset();
   state.cancelled = true;
-  setButtonToGenerationMode(false);
+  setButtonToGenerationMode();
+  clearMessages();
+  addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
 }
 
 async function startPdfGeneration() {
@@ -59,47 +58,51 @@ async function startPdfGeneration() {
     if (state.generationInProgressing) {
       return;
     }
+    reset();
     state.generationInProgressing = true;
     setButtonToCancelMode();
     let journal = new Journal();
     const html = await getTabHtml();
-    messagesContainer.innerHTML = "";
-    addMessage("Lancement de la génération du pdf...");
+    clearMessages();
+    addMessage("Obtention des informations en cours...");
+    addMessage("Laissez l'extension ouverte jusqu'à la fin");
     journal.getJournalKey(html);
     if (!journal.key_find) {
       reset();
-      addMessage("Clé de journal pas trouvée...", "red");
+      setButtonToGenerationMode();
+      addMessage("Clé de journal non trouvée", "error");
       return;
     }
 
-    addMessage(`Clé de journal trouvée: ${journal.journal_key}`, "green");
+    addMessage(`Clé de journal trouvée: ${journal.journal_key}`, "success");
     journal.getMaterialJSON((error) => {
       reset();
-      setButtonToGenerationMode(false);
+      setButtonToGenerationMode();
       if (error.status === 403) {
-        addMessage("Erreur obtention material.json: rafraichissez la page (F5)", "red");
+        addMessage("Erreur obtention material.json: rafraichissez la page (F5)", "error");
       } else {
-        addMessage(`Erreur obtention material.json: ${error.status}`, "red");
+        addMessage(`Erreur obtention material.json: ${error.status}`, "error");
       }
 
     }, (material) => {
       console.debug(material);
-      addMessage(`Material.json obtenu: journal du ${material.metadata.publication_localized_date}`, "green");
+      addMessage(`Material.json obtenu: journal du ${material.metadata.publication_localized_date}`, "success");
       const progressLine = document.createElement("p");
-      progressLine.classList.add("green");
+      progressLine.classList.add("success");
       const pagesLength = material.pages.length;
       messagesContainer.appendChild(progressLine);
       generatePages(journal.journal_key, journal.material, (page) => {
         progressLine.textContent = `Pages en cours de génération (${page}/${pagesLength})`;
         if (page === pagesLength) {
-          setButtonToGenerationMode(true);
+          setButtonToGenerationMode();
+          addMessage("Génération du PDF terminée", "success");
         }
       })
     });
   } catch (err) {
     reset();
-    setButtonToGenerationMode(false);
-    addMessage(`Erreur inattendue ${err.message}`, "red");
+    setButtonToGenerationMode();
+    addMessage(`Erreur inattendue ${err.message}`, "error");
   }
 }
 
@@ -129,15 +132,6 @@ function getTabHtml() {
       );
     });
   });
-}
-
-function addMessage(text, classname) {
-  const line = document.createElement("p");
-  if (classname) {
-    line.classList.add(classname);
-  }
-  line.textContent = text;
-  messagesContainer.appendChild(line);
 }
 
 async function generatePages(journalKey, material, callbackUpdate) {
@@ -174,7 +168,8 @@ async function generatePages(journalKey, material, callbackUpdate) {
           image = await getDataUri(imgUrl);
         } catch (e) {
           reset();
-          addMessage(`Erreur chargement image : ${imgUrl}`, "red");
+          setButtonToGenerationMode();
+          addMessage(`Erreur chargement image : ${imgUrl}`, "error");
           return;
         }
 
@@ -194,22 +189,29 @@ async function generatePages(journalKey, material, callbackUpdate) {
 }
 
 function getDataUri(url) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const image = new Image();
-    image.setAttribute("crossOrigin", "anonymous");
+    image.crossOrigin = "anonymous";
 
     image.onload = function () {
-      const canvas = document.createElement("canvas");
-      canvas.width = this.naturalWidth;
-      canvas.height = this.naturalHeight;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = this.naturalWidth;
+        canvas.height = this.naturalHeight;
+  
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(this, 0, 0);
+  
+        resolve(canvas.toDataURL("image/jpeg"));
+      } catch (error) {
+        reject(error);
+      }
+    };
 
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      canvas.getContext("2d").drawImage(this, 0, 0);
-
-      resolve(canvas.toDataURL("image/jpeg"));
+    image.onerror = function (error) {
+      reject(new Error(`Erreur chargement image : ${url}`));
     };
 
     image.src = url;
@@ -217,10 +219,6 @@ function getDataUri(url) {
 }
 
 function reset() {
-  if (state.progressInterval) {
-    clearInterval(state.progressInterval);
-    state.progressInterval = null;
-  }
   state.generationInProgressing = false;
   state.currentPage = 0;
   state.maxPage = 0;
