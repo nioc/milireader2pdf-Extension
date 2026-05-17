@@ -59,12 +59,28 @@ function setButtonToCancelMode() {
 /**
  * Update document generator configuration from UI form
  */
-function updateConfig() {
+async function updateConfig() {
   generatorConfig.filenamePattern = document.getElementById("filenamePattern").value;
   generatorConfig.fetchArticle = document.getElementById("fetchArticle").checked;
   generatorConfig.addInvisibleText = document.getElementById("addInvisibleText").checked;
   generatorConfig.addArticleOutlines = document.getElementById("addArticleOutlines").checked;
   generatorConfig.invisibleTextFontSize = parseInt(document.getElementById("invisibleTextFontSize").value) || 20;
+  await chrome.storage.local.set(generatorConfig);
+}
+
+/**
+ * Retreive a previous configuration
+ */
+async function getConfig() {
+  /** @type {DocumentGeneratorConfig} */
+  const previousConfig = await chrome.storage.local.get();
+  if (previousConfig) {
+    document.getElementById("filenamePattern").value = previousConfig.filenamePattern;
+    document.getElementById("fetchArticle").checked = previousConfig.fetchArticle;
+    document.getElementById("addInvisibleText").checked = previousConfig.addInvisibleText;
+    document.getElementById("addArticleOutlines").checked = previousConfig.addArticleOutlines;
+    document.getElementById("invisibleTextFontSize").value = previousConfig.invisibleTextFontSize;
+  }
 }
 
 /**
@@ -147,7 +163,8 @@ function getTabHtml() {
 
 // bootstrap
 const generator = new DocumentGenerator(jsPDF, addMessage, addProgressMessage);
-window.onload = () => {
+window.onload = async () => {
+  await getConfig();
   setButtonToGenerationMode();
   clearMessages();
   addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");

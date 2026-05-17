@@ -4,6 +4,7 @@
   "description": "Convertisseur du lecteur miLibris-reader en fichier PDF",
   "version": "3.0",
   "permissions": [
+    "storage",
     "scripting"
   ],
   "host_permissions": [
