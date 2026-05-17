@@ -11,6 +11,32 @@
 <body>
   <h1 id="title">Milireader2pdf</h1>
   <p id="credit">by Pierrot le Moineau 🐦</p>
+  <details>
+    <summary>
+      <span class="icon"></span><span>Options</span>
+    </summary>
+    <div>
+      <label for="filenamePattern">Nommage du fichier</label>
+      <input name="filenamePattern" id="filenamePattern" type="text" value="{{provider}}_{{publication_date}}">
+      <small>les valeurs de <span class="placeholder">{{provider}}</span>, <span class="placeholder">{{issue_number}}</span>, <span class="placeholder">{{title}}</span> et <span class="placeholder">{{publication_date}}</span> seront remplacées</small>
+    </div>
+    <div>
+      <input name="fetchArticle" id="fetchArticle" type="checkbox" checked>
+      <label for="fetchArticle">Récupération du contenu complet</label>
+    </div>
+    <div>
+      <input name="addInvisibleText" id="addInvisibleText" type="checkbox" checked>
+      <label for="addInvisibleText">Ajout du texte invisible</label>
+    </div>
+    <div>
+      <input name="addArticleOutlines" id="addArticleOutlines" type="checkbox" checked>
+      <label for="addArticleOutlines">Ajout du contenu complet en signet</label>
+    </div>
+    <div>
+      <label for="invisibleTextFontSize">Taille du texte invisible</label>
+      <input name="invisibleTextFontSize" id="invisibleTextFontSize" type="number" value="20">
+    </div>
+  </details>
   <button id="actionBtn">Générer le PDF</button>
   <div id="messagesContainer"></div>
 </body>

@@ -59,3 +59,34 @@ body {
 .error {
   color: #e74c3c;
 }
+
+details {
+  user-select: none;
+  margin-bottom: 10px;
+  summary .icon {
+    padding-right: 5px;
+    &::after {
+      content: "▶" / "ouvrir";
+    }
+  }
+  &[open] summary .icon::after {
+    content: "▼" / "fermer";
+  }
+  input[type=text] {
+    width: 100%;
+  }
+  .placeholder {
+    user-select: all;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: bolder;
+  }
+}
+
+summary {
+  display: flex;
+  cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}

@@ -6,7 +6,7 @@ const config = {
   /** Retrieve the content of an article from an external source */
   fetchArticle: true,
   /** Font size for invisible text */
-  fontSize: 20,
+  invisibleTextFontSize: 20,
   /** Add the article text as a sub-item under the article outline */
   addArticleOutlines: true,
   /** Pattern for the name of the generated file
@@ -17,8 +17,7 @@ const config = {
    * - issue_number
    * - title
    */
-  // filenamePattern: "[provider]_[publication_date].pdf",
-  filenamePattern: "CH-test_{{issue_number}}_{{publication_date}}",
+  filenamePattern: "{{provider}}_{{publication_date}}",
 };
 
 // store information
@@ -58,6 +57,14 @@ function setButtonToCancelMode() {
   actionBtn.onclick = cancelPdfGeneration
 }
 
+function updateConfig() {
+  config.filenamePattern = document.getElementById("filenamePattern").value;
+  config.fetchArticle = document.getElementById("fetchArticle").checked;
+  config.addInvisibleText = document.getElementById("addInvisibleText").checked;
+  config.addArticleOutlines = document.getElementById("addArticleOutlines").checked;
+  config.invisibleTextFontSize = parseInt(document.getElementById("invisibleTextFontSize").value) || 20;
+}
+
 // bootstrap
 window.onload = () => {
   setButtonToGenerationMode();
@@ -75,6 +82,7 @@ function cancelPdfGeneration() {
 }
 
 async function startPdfGeneration() {
+  updateConfig();
   try {
     if (state.generationInProgressing) {
       return;
@@ -295,7 +303,7 @@ async function addInvisibleText(doc, hd, box, text, paragraphs) {
     const w = Math.round(box.width * hd.width);
     doc.saveGraphicsState();
     doc.setGState(doc.GState({ opacity: 0 }));
-    doc.setFontSize(config.fontSize);
+    doc.setFontSize(config.invisibleTextFontSize);
     doc.text(textToInsert, x, y, {
       align: "left",
       maxWidth: w,
