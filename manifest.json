@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Milireader2pdf",
-  "description": "Convertisseur du lecteur milibris-reader en fichier pdf",
-  "version": "2.1",
+  "description": "Convertisseur du lecteur miLibris-reader en fichier PDF",
+  "version": "3.0",
   "permissions": [
     "scripting"
   ],

@@ -1,36 +1,25 @@
 const { jsPDF } = window.jspdf;
 
-const config = {
-  /** Add the article text to the page as hidden content for indexing, searching and copying and pasting */
-  addInvisibleText: true,
-  /** Retrieve the content of an article from an external source */
-  fetchArticle: true,
-  /** Font size for invisible text */
-  invisibleTextFontSize: 20,
-  /** Add the article text as a sub-item under the article outline */
-  addArticleOutlines: true,
-  /** Pattern for the name of the generated file
-   * 
-   * Allowed placeholder in double brackets (ex: {{provider}}) are:
-   * - provider
-   * - publication_date
-   * - issue_number
-   * - title
-   */
-  filenamePattern: "{{provider}}_{{publication_date}}",
-};
+import {
+  DocumentGenerator,
+  GetImageError,
+  GetMaterialError,
+  KeyNotFoundError,
+} from "./core.js";
 
-// store information
-const state = {
-  generationInProgressing: false,
-  currentPage: 0,
-  maxPage: 0,
-  cancelled: false,
+/** @type {DocumentGeneratorConfig} */
+const generatorConfig = {
+  addInvisibleText: true,
+  fetchArticle: true,
+  invisibleTextFontSize: 20,
+  addArticleOutlines: true,
+  filenamePattern: "{{provider}}_{{publication_date}}",
 };
 
 // UI functions
 const actionBtn = document.getElementById("actionBtn");
 const messagesContainer = document.getElementById("messagesContainer");
+let progressMessageElement = null
 
 function clearMessages() {
   messagesContainer.innerHTML = "";
@@ -43,6 +32,14 @@ function addMessage(text, classname) {
   }
   line.textContent = text;
   messagesContainer.appendChild(line);
+  return line;
+}
+
+function addProgressMessage(text) {
+  if (!progressMessageElement) {
+    progressMessageElement = addMessage(text, "success");
+  }
+  progressMessageElement.textContent = text;
 }
 
 function setButtonToGenerationMode() {
@@ -57,84 +54,69 @@ function setButtonToCancelMode() {
   actionBtn.onclick = cancelPdfGeneration
 }
 
-function updateConfig() {
-  config.filenamePattern = document.getElementById("filenamePattern").value;
-  config.fetchArticle = document.getElementById("fetchArticle").checked;
-  config.addInvisibleText = document.getElementById("addInvisibleText").checked;
-  config.addArticleOutlines = document.getElementById("addArticleOutlines").checked;
-  config.invisibleTextFontSize = parseInt(document.getElementById("invisibleTextFontSize").value) || 20;
-}
-
-// bootstrap
-window.onload = () => {
-  setButtonToGenerationMode();
-  clearMessages();
-  addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
-}
-
 // business logic functions
+
+/**
+ * Update document generator configuration from UI form
+ */
+function updateConfig() {
+  generatorConfig.filenamePattern = document.getElementById("filenamePattern").value;
+  generatorConfig.fetchArticle = document.getElementById("fetchArticle").checked;
+  generatorConfig.addInvisibleText = document.getElementById("addInvisibleText").checked;
+  generatorConfig.addArticleOutlines = document.getElementById("addArticleOutlines").checked;
+  generatorConfig.invisibleTextFontSize = parseInt(document.getElementById("invisibleTextFontSize").value) || 20;
+}
+
+/**
+ * Cancel current document generation
+ */
 function cancelPdfGeneration() {
-  reset();
-  state.cancelled = true;
+  generator.stop();
   setButtonToGenerationMode();
   clearMessages();
   addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
 }
 
+/**
+ * Request a document generation
+ */
 async function startPdfGeneration() {
   updateConfig();
+  if (generator.isRunning()) {
+    return;
+  }
+  setButtonToCancelMode();
+  const html = await getTabHtml();
+  clearMessages();
+  addMessage("Obtention des informations en cours...");
+  addMessage("Laissez l'extension ouverte jusqu'à la fin");
   try {
-    if (state.generationInProgressing) {
-      return;
-    }
-    reset();
-    state.generationInProgressing = true;
-    setButtonToCancelMode();
-    let journal = new Journal();
-    const html = await getTabHtml();
-    clearMessages();
-    addMessage("Obtention des informations en cours...");
-    addMessage("Laissez l'extension ouverte jusqu'à la fin");
-    journal.getJournalKey(html);
-    if (!journal.key_find) {
-      reset();
-      setButtonToGenerationMode();
+    await generator.start(generatorConfig, html);
+    setButtonToGenerationMode();
+    addMessage("Génération du PDF terminée", "success");
+  } catch (error) {
+    console.error(error);
+    setButtonToGenerationMode();
+    if (error instanceof KeyNotFoundError) {
       addMessage("Clé de journal non trouvée", "error");
-      return;
-    }
-
-    addMessage(`Clé de journal trouvée: ${journal.journal_key}`, "success");
-    journal.getMaterialJSON((error) => {
-      reset();
-      setButtonToGenerationMode();
-      if (error.status === 403) {
+    } else if (error instanceof GetMaterialError) {
+      if (error.status === 403 || error.status === 401) {
         addMessage("Erreur obtention material.json: rafraichissez la page (F5)", "error");
       } else {
         addMessage(`Erreur obtention material.json: ${error.status}`, "error");
       }
-
-    }, (material) => {
-      console.debug(material);
-      addMessage(`Material.json obtenu: journal ${material.metadata.issue_number} du ${material.metadata.publication_localized_date}`, "success");
-      const progressLine = document.createElement("p");
-      progressLine.classList.add("success");
-      const pagesLength = material.pages.length;
-      messagesContainer.appendChild(progressLine);
-      generatePages(journal.journal_key, journal.material, (page) => {
-        progressLine.textContent = `Pages en cours de génération (${page}/${pagesLength})`;
-        if (page === pagesLength) {
-          setButtonToGenerationMode();
-          addMessage("Génération du PDF terminée", "success");
-        }
-      })
-    });
-  } catch (err) {
-    reset();
-    setButtonToGenerationMode();
-    addMessage(`Erreur inattendue ${err.message}`, "error");
+    } else if (error instanceof GetImageError) {
+        addMessage(`Erreur chargement de l'image : ${error.url}`, "error");
+    } else {
+      addMessage(`Erreur inattendue ${error.message}`, "error");
+    }
   }
 }
 
+/**
+ * Returns the html of the current tab
+ * @returns {Promise<string>}
+ */
 function getTabHtml() {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -163,219 +145,10 @@ function getTabHtml() {
   });
 }
 
-async function generatePages(journalKey, material, callbackUpdate) {
-  const firstHd = material.pages[0].hd;
-  const doc = new jsPDF("p", "px", [firstHd.width, firstHd.height]);
-
-  const rootOutline = handleMetadata(doc, material)
-
-  let pageIndex = 1;
-  state.maxPage = material.pages.length;
-  for (const page of material.pages) {
-    const hd = page.hd;
-    state.currentPage = pageIndex;
-    callbackUpdate(pageIndex);
-
-    let tileWidth = hd.tile_height; // @TODO : check requested behavior or bug?
-    for (let col = 0; col < hd.tile_col_count; col++) {
-      if ((col + 1) * hd.tile_width > hd.width) {
-        tileWidth = hd.width % hd.tile_width;
-      }
-      let tileHeight = hd.tile_width; // @TODO : check requested behavior or bug?
-      for (let row = 0; row < hd.tile_row_count; row++) {
-        if (state.cancelled) {
-          reset();
-          return;
-        }
-
-        if ((row + 1) * hd.tile_height > hd.height) {
-          tileHeight = hd.height % hd.tile_height;
-        }
-
-        let imgUrl = `${journalKey}/${hd.path}/tile${(col + "").padStart(2, "0")}x${(row + "").padStart(2, "0")}.jpeg`;
-        console.debug(imgUrl);
-        let image;
-        try {
-          image = await getDataUri(imgUrl);
-        } catch (e) {
-          reset();
-          setButtonToGenerationMode();
-          addMessage(`Erreur chargement image : ${imgUrl}`, "error");
-          return;
-        }
-
-        doc.addImage(image, "JPEG", (hd.tile_width * col), (hd.tile_height * row), tileWidth, tileHeight);
-        console.debug(`row${row}, col${col}: width${tileWidth}, height:${tileHeight}`);
-      }
-    }
-
-    // add outlines and invisible text
-    const pageOutline = doc.outline.add(rootOutline, `Page ${pageIndex}`, { pageNumber: pageIndex });
-    if (material.boxes) {
-      for (const box of material.boxes.filter((box) => box.page === pageIndex && box.type === "article")) {
-        const article = material.articles[box.target]
-        const paragraphs = await getArticleParagraphs(`${journalKey}/${article.url}`);
-        await addInvisibleText(doc, hd, box, article.abstract, paragraphs);
-        const outlineTitleParts = []
-        if (article.rubrics?.length) {
-          outlineTitleParts.push(article.rubrics[0])
-        }
-        if (article.title) {
-          outlineTitleParts.push(article.title)
-        }
-        let title = ""
-        if (article.rubrics?.length) {
-          title = outlineTitleParts.join(" - ")
-          const articleOutline = doc.outline.add(pageOutline, title, { pageNumber: pageIndex });
-          if (config.addArticleOutlines) {
-            paragraphs.forEach((p) => doc.outline.add(articleOutline, p, { pageNumber: pageIndex }));
-          }
-        }
-      }
-    }
-
-    pageIndex++;
-    if (pageIndex <= material.pages.length) {
-      doc.addPage();
-    }
-  }
-  // save
-  let filename = config.filenamePattern
-    .replaceAll("{{provider}}", material.metadata.provider ?? "")
-    .replaceAll("{{title}}", material.metadata.title ?? "")
-    .replaceAll("{{issue_number}}", material.metadata.issue_number ?? "")
-    .replaceAll("{{publication_date}}", material.metadata.publication_date ?? "")
-  doc.save(filename);
-  reset();
-}
-
-function handleMetadata(doc, material) {
-  // handle pdf properties
-  const titleParts = [];
-  if (material.metadata.title) {
-    titleParts.push(material.metadata.title);
-  }
-  if (material.metadata.issue_number) {
-    titleParts.push(material.metadata.issue_number);
-  }
-  const properties = {};
-  if (titleParts.length) {
-    properties.title = titleParts.join(" - ");
-  }
-  if (material.metadata.provider) {
-    properties.author = material.metadata.provider;
-  }
-  doc.setProperties(properties);
-  if (material.metadata.publication_date) {
-    const publicationDate = new Date(material.metadata.publication_date);
-    doc.setCreationDate(publicationDate);
-  }
-  // create root outline
-  return doc.outline.add(null, properties.title ?? 'Journal', null);
-}
-
-async function getArticleParagraphs(url) {
-  let paragraphs = []
-  if (config.fetchArticle) {
-    try {
-      const response = await fetch(url);
-      const articleContent = await response.json();
-      paragraphs = [
-        cleanTextWithParagraphs(articleContent.title || ""),
-        ...(articleContent?.content?.sections
-          ?.flatMap((section) => section.items || [])
-          .filter((item) => item.type === "text" && item.class === "paragraph")
-          .map((item) => cleanTextWithParagraphs(item.content)) || [])
-      ];
-    } catch (error) {
-      console.warn("Erreur fetch article", url, error);
-    }
-  }
-  return paragraphs;
-}
-
-async function addInvisibleText(doc, hd, box, text, paragraphs) {
-  if (config.addInvisibleText) {
-    let textToInsert = paragraphs.length > 0 ? paragraphs.join("\n\n") : text
-    // console.debug(textToInsert)
-    const x = Math.round(box.left * hd.width);
-    const y = Math.round(box.top * hd.height);
-    const w = Math.round(box.width * hd.width);
-    doc.saveGraphicsState();
-    doc.setGState(doc.GState({ opacity: 0 }));
-    doc.setFontSize(config.invisibleTextFontSize);
-    doc.text(textToInsert, x, y, {
-      align: "left",
-      maxWidth: w,
-      renderingMode: "invisible",
-    });
-    doc.restoreGraphicsState();
-  }
-}
-
-function cleanTextWithParagraphs(html) {
-  if (!html) return "";
-
-  // Replace <br>
-  html = html.replace(/<br\s*\/?>/gi, "\n");
-
-  // Replace html paragraphs
-  html = html.replace(/<\/p>/gi, "\n\n");
-  html = html.replace(/<p[^>]*>/gi, "");
-
-  // Delete others HTML tags
-  let text = html.replace(/<[^>]+>/g, " ");
-
-  // Decode HTML entities
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = text;
-  text = textarea.value;
-
-  // Delete invisibles characters
-  text = text.replace(/[\u200B-\u200D\uFEFF]/g, "");
-
-  // Normalize spaces
-  text = text.replace(/[ \t]+/g, " ");
-
-  // Normalize new lines
-  text = text.replace(/\n{3,}/g, "\n\n");
-
-  return text.trim();
-}
-
-function getDataUri(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-
-    image.onload = function () {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = this.naturalWidth;
-        canvas.height = this.naturalHeight;
-  
-        const ctx = canvas.getContext("2d");
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(this, 0, 0);
-  
-        resolve(canvas.toDataURL("image/jpeg"));
-      } catch (error) {
-        reject(error);
-      }
-    };
-
-    image.onerror = function (error) {
-      reject(new Error(`Erreur chargement image : ${url}`));
-    };
-
-    image.src = url;
-  })
-}
-
-function reset() {
-  state.generationInProgressing = false;
-  state.currentPage = 0;
-  state.maxPage = 0;
-  state.cancelled = false;
+// bootstrap
+const generator = new DocumentGenerator(jsPDF, addMessage, addProgressMessage);
+window.onload = () => {
+  setButtonToGenerationMode();
+  clearMessages();
+  addMessage("Générer le PDF en cliquant sur le bouton ci-dessus");
 }

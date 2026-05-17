@@ -1,7 +1,7 @@
 
 const JOURNAL_KEY_REGEX = "(https\:\/\/content\.milibris\.com\/access\/html5\-reader\/.[^\/]*)\/pages\/jpeg\/ld\/"
 
-class Journal {
+export class Journal {
 
   key_find;
   journal_key;
