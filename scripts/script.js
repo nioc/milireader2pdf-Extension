@@ -1,9 +1,24 @@
 const { jsPDF } = window.jspdf;
 
 const config = {
+  /** Add the article text to the page as hidden content for indexing, searching and copying and pasting */
   addInvisibleText: true,
+  /** Retrieve the content of an article from an external source */
   fetchArticle: true,
+  /** Font size for invisible text */
   fontSize: 20,
+  /** Add the article text as a sub-item under the article outline */
+  addArticleOutlines: true,
+  /** Pattern for the name of the generated file
+   * 
+   * Allowed placeholder in double brackets (ex: {{provider}}) are:
+   * - provider
+   * - publication_date
+   * - issue_number
+   * - title
+   */
+  // filenamePattern: "[provider]_[publication_date].pdf",
+  filenamePattern: "CH-test_{{issue_number}}_{{publication_date}}",
 };
 
 // store information
@@ -92,7 +107,7 @@ async function startPdfGeneration() {
 
     }, (material) => {
       console.debug(material);
-      addMessage(`Material.json obtenu: journal du ${material.metadata.publication_localized_date}`, "success");
+      addMessage(`Material.json obtenu: journal ${material.metadata.issue_number} du ${material.metadata.publication_localized_date}`, "success");
       const progressLine = document.createElement("p");
       progressLine.classList.add("success");
       const pagesLength = material.pages.length;
@@ -204,7 +219,9 @@ async function generatePages(journalKey, material, callbackUpdate) {
         if (article.rubrics?.length) {
           title = outlineTitleParts.join(" - ")
           const articleOutline = doc.outline.add(pageOutline, title, { pageNumber: pageIndex });
-          paragraphs.forEach((p) => doc.outline.add(articleOutline, p, { pageNumber: pageIndex }));
+          if (config.addArticleOutlines) {
+            paragraphs.forEach((p) => doc.outline.add(articleOutline, p, { pageNumber: pageIndex }));
+          }
         }
       }
     }
@@ -215,7 +232,12 @@ async function generatePages(journalKey, material, callbackUpdate) {
     }
   }
   // save
-  doc.save(`${material.metadata.provider}_${material.metadata.publication_date}`);
+  let filename = config.filenamePattern
+    .replaceAll("{{provider}}", material.metadata.provider ?? "")
+    .replaceAll("{{title}}", material.metadata.title ?? "")
+    .replaceAll("{{issue_number}}", material.metadata.issue_number ?? "")
+    .replaceAll("{{publication_date}}", material.metadata.publication_date ?? "")
+  doc.save(filename);
   reset();
 }
 
